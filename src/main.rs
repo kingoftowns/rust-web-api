@@ -45,19 +45,28 @@ async fn create_rustacean(db: DbConn, new_rustacean: Json<NewRustacean>) -> Valu
     }).await
 }
 
-#[put("/rustaceans/<id>", format = "json")]
-fn update_rustacean(id: i32) -> Value {
-    json!({
-        "id": id,
-        "name": "John Doe",
-        "age": 30,
-        "email": "john@doe.com"
-    })
+#[put("/rustaceans/<id>", format = "json", data = "<rustacean>")]
+async fn update_rustacean(db: DbConn, id: i32, rustacean: Json<Rustacean>) -> Value {
+    db.run(move |c| {
+        let result = diesel::update(rustaceans::table.find(id))
+            .set((
+                rustaceans::name.eq(&rustacean.name),
+                rustaceans::email.eq(&rustacean.email)
+            ))
+            .execute(c)
+            .expect("DB error when updating");
+        json!(result)
+    }).await
 }
 
-#[delete("/rustaceans/<_id>")]
-fn delete_rustacean(_id: i32) -> status::NoContent {
-    status::NoContent
+#[delete("/rustaceans/<id>")]
+async fn delete_rustacean(db: DbConn, id: i32) -> status::NoContent {
+    db.run(move |c| {
+        diesel::delete(rustaceans::table.find(id))
+            .execute(c)
+            .expect("DB error when deleting");
+        status::NoContent
+    }).await
 }
 
 #[catch(404)]
