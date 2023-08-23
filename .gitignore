@@ -15,3 +15,10 @@ Cargo.lock
 
 # rest client files to test the endpoints
 rest-client/
+
+# Visual Studio Code files
+.DS_Store
+.vscode/
+
+#App Database files
+database.*
