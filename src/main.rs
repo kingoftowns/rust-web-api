@@ -4,6 +4,8 @@ mod schema;
 mod models;
 mod repositories;
 
+use rocket::fairing::AdHoc;
+use rocket::{Build, Rocket};
 use rocket::http::Status;
 use rocket::serde::json::{Value, json, Json};
 use rocket::response::status::{self, Custom};
@@ -28,7 +30,15 @@ async fn get_rustacean(id: i32, db: DbConn) -> Result<Value, Custom<Value>> {
     db.run(move |c| {
         RustaceanRepository::find(c, id)
             .map(|rustacean| json!(rustacean))
-            .map_err(|err| Custom(Status::InternalServerError, json!(err.to_string())))
+            .map_err(|err| 
+                match err {
+                    diesel::NotFound => Custom(Status::NotFound, json!({
+                        "status": "error",
+                        "reason": "Resource was not found."
+                    })),
+                    _ => Custom(Status::InternalServerError, json!(err.to_string()))
+                }
+            )
     }).await
 }
 
@@ -66,6 +76,21 @@ fn not_found() -> Value {
         "reason": "Resource was not found."
     })
 }
+
+async fn run_db_migrations(rocket: Rocket<Build>) -> Rocket<Build> {
+    use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+
+    const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
+
+    DbConn::get_one(&rocket)
+        .await
+        .expect("Unable to get database connection").run(|c| {
+            c.run_pending_migrations(MIGRATIONS).expect("Unable to run database migrations");
+        })
+        .await;
+
+    rocket
+}
     
 
 #[rocket::main]
@@ -82,6 +107,7 @@ async fn main() {
             not_found
         ])
         .attach(DbConn::fairing())
+        .attach(AdHoc::on_ignite("Database Migrations", run_db_migrations))
         .launch()
         .await;
 }
